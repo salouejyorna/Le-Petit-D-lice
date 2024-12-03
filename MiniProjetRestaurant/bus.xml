@@ -1,0 +1,133 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:wsc="http://www.mulesoft.org/schema/mule/wsc" xmlns:jms="http://www.mulesoft.org/schema/mule/jms"
+	xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/jms http://www.mulesoft.org/schema/mule/jms/current/mule-jms.xsd
+http://www.mulesoft.org/schema/mule/wsc http://www.mulesoft.org/schema/mule/wsc/current/mule-wsc.xsd">
+	<http:listener-config name="HTTP_Listener_config" doc:name="HTTP Listener config" doc:id="8195e3ca-428f-420d-be00-99eb37fbb208" >
+		<http:listener-connection host="0.0.0.0" port="8081" />
+	</http:listener-config>
+	<http:request-config name="HTTP_Request_configuration" doc:name="HTTP Request configuration" doc:id="d8809da5-ac89-4aa4-93f8-52b118ba47bd" basePath="/order-service" >
+		<http:request-connection host="localhost" port="8085" />
+	</http:request-config>
+	<jms:config name="JMS_Config" doc:name="JMS Config" doc:id="4d108908-35dd-4b60-8078-793e3267a56a" >
+		<jms:active-mq-connection />
+	</jms:config>
+	<http:request-config name="HTTP_Request_configuration1" doc:name="HTTP Request configuration" doc:id="19e4b784-d716-431e-9f08-dc71517e4ffe" basePath="/reservation-service" >
+		<http:request-connection host="localhost" port="9091" />
+	</http:request-config>
+	<http:request-config name="HTTP_Request_configuration2" doc:name="HTTP Request configuration" doc:id="6cb1f3ef-b587-4555-bbc2-9f546a9255c3" basePath="/order-service" >
+		<http:request-connection host="localhost" port="8085" />
+	</http:request-config>
+	<jms:config name="JMS_Config1" doc:name="JMS Config" doc:id="7d9acf3a-71f6-4de0-adbd-a3699a621481" >
+		<jms:active-mq-connection />
+	</jms:config>
+	<http:request-config name="HTTP_Request_configuration3" doc:name="HTTP Request configuration" doc:id="d3432930-63bc-4ffe-9499-d09db060db75" basePath="/payment-service" >
+		<http:request-connection host="localhost" port="9090" />
+	</http:request-config>
+	<wsc:config name="Web_Service_Consumer_Config" doc:name="Web Service Consumer Config" doc:id="b96ce023-dff2-4f7a-99e8-f8db52dffc2b" >
+		<wsc:connection wsdlLocation="http://localhost:56275/DeliveryService.svc?singleWsdl" service="DeliveryService" port="BasicHttpBinding_IDeliveryService" address="http://localhost:56275/DeliveryService.svc" >
+			<wsc:web-service-security actor="http://schemas.xmlsoap.org/soap/actor/next" />
+		</wsc:connection>
+	</wsc:config>
+	<flow name="projetrestaurantFlow" doc:id="d897cb06-165f-4dcb-8774-541410c355ec" >
+		<http:listener doc:name="Listener" doc:id="d085bfa1-8a7f-4785-8779-8c54f4054214" config-ref="HTTP_Listener_config" path="/workflowOrder"/>
+		<set-variable value="#[payload]" doc:name="Set Variable" doc:id="e2c01efd-91a2-4e18-a363-3b053cac36e6" variableName="orderPayload"/>
+		<ee:transform doc:name="Transform Message" doc:id="50e7fc47-1fa2-4b1f-8060-54780c47e07c" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	reservationId: payload.order.reservationId,
+	menuItemId: payload.order.menuItemId as String,
+	quantity: payload.order.quantity
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<http:request method="GET" doc:name="Request" doc:id="31b67b2b-35d1-4902-9dd7-f376231d3c3a" config-ref="HTTP_Request_configuration2" path="/orders"/>
+		<jms:publish doc:name="Publish" doc:id="e99ef91e-5a8a-4879-87b4-6f4a5d64a366" config-ref="JMS_Config" destination="orderTopic">
+			<jms:message >
+				<jms:body ><![CDATA[#[vars.orderPayload]]]></jms:body>
+			</jms:message>
+		</jms:publish>
+	</flow>
+	<flow name="projetrestaurantFlow1" doc:id="c335959e-7785-4fb4-9cab-f5f359e04404" >
+		<jms:listener doc:name="On New Message" doc:id="44514583-93a1-4825-a6e1-3ea1528646a9" config-ref="JMS_Config" destination="orderTopic" numberOfConsumers="1">
+			<jms:consumer-type >
+				<jms:topic-consumer shared="true" />
+			</jms:consumer-type>
+		</jms:listener>
+		<ee:transform doc:name="Transform Message" doc:id="c2e8bce4-483a-4187-939c-fb3ec470e9cc" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	clientName: payload.reservation.clientName,
+	numberOfPeople: payload.reservation.numberOfPeople,
+	reservationDateTime: payload.reservation.reservationDateTime
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<http:request method="POST" doc:name="Request" doc:id="f7e598d7-20aa-4eea-9eb0-03c16fb52cac" config-ref="HTTP_Request_configuration1" path="/"/>
+	</flow>
+	<flow name="projetrestaurantFlow2" doc:id="c9f1a75c-08e1-42e1-b73c-be51c8d0ad35" >
+		<jms:listener doc:name="On New Message" doc:id="b06dc4db-09ac-4581-9b63-75629dbded4e" config-ref="JMS_Config" destination="orderTopic" numberOfConsumers="1">
+			<jms:consumer-type >
+				<jms:topic-consumer shared="true" />
+			</jms:consumer-type>
+		</jms:listener>
+		<ee:transform doc:name="Transform Message" doc:id="4ab6d0be-8940-421e-8238-b225b283b835" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	orderId: payload.payment.orderId as Number,
+	amount: payload.payment.amount,
+	paymentMethod: payload.payment.paymentMethod
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<http:request method="GET" doc:name="Request" doc:id="fbef8535-6b72-4ea1-be81-26d1984a5116" config-ref="HTTP_Request_configuration3" path="/payments"/>
+	</flow>
+	<flow name="projetrestaurantFlow3" doc:id="369dd835-2aef-43bb-86ba-870be681a872" >
+		<jms:listener doc:name="On New Message" doc:id="a51a9279-f15b-49b3-a9a1-eff1b1b09cf4" config-ref="JMS_Config" destination="orderTopic" numberOfConsumers="1">
+			<jms:consumer-type >
+				<jms:topic-consumer shared="true" />
+			</jms:consumer-type>
+		</jms:listener>
+		<ee:transform doc:name="Transform Message" doc:id="51b0b88f-e696-41fc-a15b-b050e8d68066" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/xml
+ns ns0 http://tempuri.org/
+ns ns01 http://schemas.datacontract.org/2004/07/DVService
+---
+{
+	ns0#AddDelivery: {
+		ns0#newDelivery: {
+			ns01#Contact: payload.delivery.contact,
+			ns01#DeliveryAddress: payload.delivery.deliveryAddress,
+			ns01#EstimatedTime: payload.delivery.estimatedTime,
+			ns01#OrderId: payload.delivery.orderId as Number
+		}
+	}
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<wsc:consume doc:name="Consume" doc:id="e16a0b83-284f-49f5-993a-be84566deb7f" config-ref="Web_Service_Consumer_Config" operation="AddDelivery"/>
+		<ee:transform doc:name="Transform Message" doc:id="b38ee7cd-990a-4052-9b8a-ab8ab38d0e28" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+payload.body]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</flow>
+</mule>
